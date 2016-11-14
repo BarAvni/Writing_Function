@@ -2,35 +2,40 @@
 #'  
 #'  This funciton compute surface conductance based on the Jarvis equation, 
 #'  as function of tempature.
-czxc
 
-#'  @param Ti (deg C) leaf temperature
-#'  @param Tmin (deg C) leaf temperature
-#'  @param Tmax (deg C) leaf temperature
-#'  @param Topt (deg C) leaf temperature
-#'  @param gsmax (s/mm)  maximum surface conductance
+
+#'  @param Tair (deg C) leaf temperature
+#'  @param Kt 
+#'  @param Tx 
+#'  @param gsmax (s/mm)  maximum surface conductance - the maximum stomatal conductance of the plant
 
 #'  @author Bar Avni
-#'  @return surface conductance (s/mm)
+#'  @return gs surface conductance (s/mm)
 
 Jarvis_mod =
-  function(Ti,Tmin,Tmax,Topt,gsmax) {
+  function(Tair,gsmax, Kt, Tx) {
     
     #       Internal Variables
     
-    #       b       () 
+    #       tk       (deg K)   
+    #       Ta       (deg K) 
+
+    # A simple representation of  tempature function in Jarvis equation (Dickinson, 1984)
+    tk = Tair + 273.15 
+   
+
+    Ta = (1-Kt*(Tx-tk)^2)^(-1)
     
-    #
-    b = (Tmax-Topt)/(Topt-Tmin)
-    Ta = (Ti-Tmin)/(Topt-Tmin)*((Tmax-Ti)/(Tmax-Topt))^b
-    
-    if (Ta > 0) {
-      Ta = 1 
-    } else {
-      Ta = 0 
+    for (i in 1:length(Ta)) {
+    if (Ta[i] > 0) {
+      Ta[i] = 1 
+     } else {
+      Ta[i] = 0 
+     }
     }
-    
+   
+    #Ta = Ta + 273.15
     gs = gsmax*Ta
     # return from your function
-    gs
+    return(gs)
   }
