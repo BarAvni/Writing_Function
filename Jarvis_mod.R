@@ -33,7 +33,7 @@ Jarvis_mod =
       Ta[i] = 0 
      }
     }
-   
+  
     #Ta = Ta + 273.15
     gs = gsmax*Ta
     # return from your function
