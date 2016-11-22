@@ -1,0 +1,69 @@
+---
+title: "Package_creation"
+author: "Bar Avni"
+date: "11/22/2016"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r ,echo=FALSE}
+# use data in functions in ecohydrotoolsBAR3 package
+
+setwd("/Users/baravni/Documents/Documents_master/master/R modelling/task1/Writing_Function/EcohydrotoolsBAR3/")
+source("R/penman_montieth.R")
+source("R/Thornthwaite.R")
+source("R/canopyInterception.R")
+source("R/runoffCalc.R")
+library(roxygen2)
+library(devtools)
+document()
+# getting data
+data("metdata")
+```
+
+## Code flowchart
+```{r ,echo=TRUE}
+# Add a new colomn of temperature in deg C to metdata file
+Tc = (5*((metdata$Tm/10) - 32))/9 
+metdata = data.frame(metdata, Tc)
+
+# Load the LAI data (source: Pugh and Gordon, 2013)
+LAI = c(1.56, 1.35, 1.09)
+
+# Call the canopyInterception fn. to compute snow fall interception
+# Convert the Snow precipitation from inches to milimiters (Sm*25.4)
+#I_LAI <- sapply(LAI,canopyInterception,P = metdata$Sm , Smean = 6.6, L0 = 0,)
+I_LAI = with(metdata,canopyInterception(Tair = Tc, LAI = LAI, P = Sm*25.4 , Smean = 6.6, L0 = 0))
+
+
+# Call the Thornthwaite fn. to calculate ET
+
+ET = with(metdata,Thornthwaite(year=Year, month=Month, Tair=Tm, TMDH=TMDH))
+
+# Correct the ET values (taken from Bernier, 1990) 
+ET = c(0.04*31, 0.06*28, 0.17*31, 0.35*30, 0.39*31, 0.45*30, 0.48*31, 0.51*31, 0.46*30, 0.38*31, 0.24*30, 0.1*31)
+ET = rep.int(ET, 5)
+infilCap = c(36*24*30, 36*24*30, 62*24*30)
+metdata = data.frame(metdata, ET,infilCap)
+
+# Call the runoffCalc fn. to calculate runoff for the three phases (living, red and grey) (source: Pugh and Gordon, 2013)
+
+Runoff_phases = with(metdata, runoffCalc(P = Sm*25.4, I =I_LAI , InfilCap = infilCap  , MaxStorage = 25, ET = ET, year = Year))
+```
+
+## Results
+
+```{r pressure, echo=FALSE}
+plot(pressure)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.

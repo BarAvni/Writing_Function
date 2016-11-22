@@ -1,5 +1,21 @@
-penman_montieth <-
-function(Tair, vpd, Rnet, gs,ga, dayl, CP=1010, Pair=101325) {
+#' Penman Montieth Equation
+#' 
+#' THis function computer evapotranspiration based on radiation, conductance etc
+#' 
+
+#' @param     Tair    (deg C) air temperature
+#' @param     vpd     (Pa)    vapour pressure deficit
+#' @param     Rnet    (j/m2/day)      net radiation
+#' @param     gs      (s/mm)  surface conductance
+#' @param     ga      (s/mm)  aerodynamic conductance
+#' @param     CP  =      1010.0 (J/kg*K) specific heat of air
+#' @param     Pair = 101325 (Pa)
+#' @author Naomi
+#' @return Evapotranspiration (mm/day)
+
+
+penman_montieth =
+  function(Tair, vpd, Rnet, gs,ga, dayl, CP=1010, Pair=101325) {
     
     #       Internal Variables
     #

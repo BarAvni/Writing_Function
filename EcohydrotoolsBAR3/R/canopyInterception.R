@@ -1,5 +1,20 @@
-canopyInterception <-
-function(Tair, LAI, P, Smean = 6.6, L0 = 0) {
+#' Snow canopy interception model (Hedstrom and Pomeroy, 1998)
+#' 
+#' THis function compute evapotranspiration based on radiation, conductance etc
+#' 
+
+#' @param     Tair    (deg C) air temperature
+#' @param     LAI     ()      Leaf area index
+#' @param     P       (mm SWE) snow precipitation 
+#' @param     Smean   (kg/m^2)  snow loading coefficient
+#' @param     L0      (mm SWE) initial snow load
+#' @param     c       () dimensionless unloading coefficient = 0.678 
+#' @author Bar Avni
+#' @return list with canopy interception (mm) for three different scenarios of LAI refering living, red and grey phases (source: Pugh and Gordon, 2013)
+
+
+canopyInterception =
+  function(Tair, LAI, P, Smean = 6.6, L0 = 0, c = 0.678) {
     
     #       Internal Variables
     #
@@ -13,22 +28,22 @@ function(Tair, LAI, P, Smean = 6.6, L0 = 0) {
     
     # Fresh snow density (ps) as a fn. of air temp
     ps = 67.92 + 51.25*exp(Tair/2.59)
-    
+  
     # Maximum snow load per unit branch area (S) as a fn. of snow loading coefficient (Smean) and ps
     S = Smean*(0.27+(46/ps))
     
-    # Maximum intercepted snow load (Lstar) as a fn. of S and LAI
-    Lstar = S*LAI
-    
-    # Proportionality factor (k) as a fn. of Lstar
-    k = 1/Lstar
-    
-    # Interception before loading occure (Il) as a fn. of Lstar, initial snow load (L0), k and snow precipitation (P)
-    (Lstar - L0)*(1- exp(-k*P))
-    
-    # Canopy interception (I) as a fn. of Il and dimensionless unloading coefficient (c) 
-    I = Il*c
- 
+      # Maximum intercepted snow load (Lstar) as a fn. of S and LAI
+      Lstar = S*LAI
+      
+      # Proportionality factor (k) as a fn. of Lstar
+      k = 1/Lstar
+      
+      # Interception before loading occure (Il) as a fn. of Lstar, initial snow load (L0), k and snow precipitation (P)
+      Il = (Lstar - L0)*(1- exp(-k*P))
+      
+      # Canopy interception (I) as a fn. of Il and dimensionless unloading coefficient (c) 
+      I = Il*c
+      
     # return from your function
-    I
+   return(I)
   }
