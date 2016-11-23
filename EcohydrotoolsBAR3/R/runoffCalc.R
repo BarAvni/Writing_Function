@@ -13,7 +13,7 @@
 
 
 runoffCalc =
-  function(P, I, InfilCap = 36*24*30  , MaxStorage = 25, ET, year) {
+  function(P, I, InfilCap = 36*24  , MaxStorage = 25, ET, year) {
     
     #       Internal Variables
     #
@@ -24,47 +24,42 @@ runoffCalc =
     #       year_index  (  )  define the years on the list
     #       year_index_end ( ) define the years on the list
     #       year_index_start ( ) define the years on the list
-    #       Pfc_case    (  )  snow precipitation according to LAI values. 
     #       Runoff_year (  )  yearly runoff
-    #       Runoff_phase ( )  gather the model phases
-    
 
+#P = metdata$Pm*2.54
+#I = I_LAI[,1]
+#year = metdata$Year
+#InfilCap = 36*24
+#MaxStorage = 25
+#ET = ET
     # Calculate the snowpack on the ground (Pfc) (snow percipitation (P) - canopy snow interseption (I))
-    for (j in 1:length(I)){
-      Pfc[1:end,j]  = P - I[[j]]  
-    }
-    
+      Pfc  = P - I  
+
     # Set initial value for storage (assuming the soil is dry)
     year_diff = diff(year)
     year_index = which(year_diff %in% 1)
     year_index_end = c(year_index, 72)
     year_index_start = c(1,13,25,37,49,61)
-
-    for (n in 1:3) {
-      Pfc_case = Pfc[1:end, n]
+    
+    
+Runoff = rep(0, times=length(year))
+Runoff_year = rep(0, times=length(year_index_end))
       for (m in 1:length(year_index_start)) {
         storage = 0
         for (i in year_index_start[m]:year_index_end[m]) {
-          storage = storage + Pfc_case[i]
+          storage = storage + Pfc[i]
           if (storage > MaxStorage) {
             OverStorage = storage - MaxStorage
             storage = storage - OverStorage
-            if (OverStorage > InfilCap[n]) {
-              Runoff[i] = OverStorage - InfilCap[n]
+            if (OverStorage > InfilCap) {
+              Runoff[i] = OverStorage - InfilCap
             }else {Runoff[i] = 0 }
-          }
-          storage = storage - ET
+          }else {Runoff[i] = 0 }
+          storage = storage - ET[i]
+          if (storage < 0) {storage = 0}
         }
         Runoff_year[m] = sum(Runoff)
       }
-      Runoff_phase[1:end,n] = Runoff_year
-    }
-
-    Runoff_living = Runoff_phase[1:end,1]
-    Runoff_red = Runoff_phase[1:end,2]
-    Runoff_grey = Runoff_phase[1:end,3]
-    years = c(2005,2006,2007,2008,2009,2010)
     # return from your function
-    Runoff_phases = list(years,Runoff_living = Runoff_living, Runoff_red = Runoff_red, Runoff_grey = Runoff_grey)
-    return(Runoff_phases)
+    return(Runoff_year)
 }
