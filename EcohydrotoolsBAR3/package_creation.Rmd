@@ -9,11 +9,9 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-## R Markdown
+### Runoff calculation of three lodgpole pine mortality stages in a snow dominated environment of the Rocky mountains 
 
-This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
-
-When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+The affect of bark beetle infestation on water yield in lodgepole pine forests in the Rocky mountains national park was exasmined following the five mortality stages, conceptual model (Pugh and Gordon, 2013). Runoff was calculated from snow pack on the ground. Result was calculated from snow canopy interception model (Hedstrom and Pomeroy, 1998) for the living, red and grey stages (differing by LAI values).   
 
 ```{r ,echo=FALSE}
 # use data in functions in ecohydrotoolsBAR3 package
@@ -29,8 +27,7 @@ document()
 # getting data
 data("metdata")
 ```
-
-## Code flowchart
+### Code flowchart
 ```{r ,echo=TRUE}
 # Add a new colomn of temperature in deg C to metdata file
 Tc = (5*((metdata$Tm/10) - 32))/9 
@@ -41,29 +38,37 @@ LAI = c(1.56, 1.35, 1.09)
 
 # Call the canopyInterception fn. to compute snow fall interception
 # Convert the Snow precipitation from inches to milimiters (Sm*25.4)
-#I_LAI <- sapply(LAI,canopyInterception,P = metdata$Sm , Smean = 6.6, L0 = 0,)
-I_LAI = with(metdata,canopyInterception(Tair = Tc, LAI = LAI, P = Sm*25.4 , Smean = 6.6, L0 = 0))
-
+# Run the code three times for the 3 LAI values representing the 3 mortality stages:
+I_LAI <- sapply(Tair = metdata$Tc, LAI, P = metdata$Sm*2.54 , Smean = 6.6, L0 = 0, canopyInterception)
 
 # Call the Thornthwaite fn. to calculate ET
-
 ET = with(metdata,Thornthwaite(year=Year, month=Month, Tair=Tm, TMDH=TMDH))
 
-# Correct the ET values (taken from Bernier, 1990) 
+# Correct the ET values (mm/month) (taken from Bernier, 1990) 
 ET = c(0.04*31, 0.06*28, 0.17*31, 0.35*30, 0.39*31, 0.45*30, 0.48*31, 0.51*31, 0.46*30, 0.38*31, 0.24*30, 0.1*31)
-ET = rep.int(ET, 5)
-infilCap = c(36*24*30, 36*24*30, 62*24*30)
-metdata = data.frame(metdata, ET,infilCap)
+ET = rep.int(ET, 6)
+metdata = data.frame(metdata, ET)
+infilCap = c(36*24, 36*24, 45*24)
 
 # Call the runoffCalc fn. to calculate runoff for the three phases (living, red and grey) (source: Pugh and Gordon, 2013)
+Runoff_phases = matrix(nrow = 6, ncol = 3)
+for (i in 1:length(infilCap)) {
+Runoff_phases[,i] <- runoffCalc(P = metdata$Sm*2.54, I_LAI[,i] , InfilCap = infilCap[i] , MaxStorage = 25, ET = metdata$ET, year = metdata$Year)
+}
 
-Runoff_phases = with(metdata, runoffCalc(P = Sm*25.4, I =I_LAI , InfilCap = infilCap  , MaxStorage = 25, ET = ET, year = Year))
 ```
 
-## Results
+### Results
+The following graph represent the runoff yield from living, red and grey stages. The results are corresponding to the results shown in Pugh and Gordon (2013). The apparent colour change in the pine canopy resulting by the beetle infestation, not affecting the runoff yield. Sharpe decrease in runoff amount is shown in the grey phase. In reality, the change is due to the infiltration increment, here the change is due to the ET values that increase due to the reduction of the canopy (LAI values).
+```{r, echo=FALSE}
+years = c(2005, 2006, 2007, 2008, 2009, 2010)
+df <- data.frame(num = as.factor(c(rep(1,6),rep(2,6), rep(3,6))),years = rep(years,3),runoff = c(Runoff_phases[,1],Runoff_phases[,2],Runoff_phases[,3]))
 
-```{r pressure, echo=FALSE}
-plot(pressure)
+
+require(ggplot2)
+
+ggplot(df, aes(x = years, y = runoff, fill = num, color = num)) + geom_line(linetype = 1, size = 2) +
+scale_colour_manual('', labels = c("living", "red", "grey"), values = c(rgb(34, 94, 168, 200, maxColorValue=255),rgb(251,180,185, 200, maxColorValue=255),rgb(245, 177, 139, 200, maxColorValue=255))) + scale_fill_manual('', values = c(rgb(34, 94, 168, 200, maxColorValue=255),rgb(251,180,185, 200, maxColorValue=255),rgb(245, 177, 139, 200, maxColorValue=255)))
+
 ```
 
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
