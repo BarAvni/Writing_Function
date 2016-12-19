@@ -1,0 +1,363 @@
+---
+title: "Water_yield_FP"
+author: "Bar Avni"
+date: "12/7/2016"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+### Runoff calculation of three lodgpole pine mortality stages in a snow dominated environment of the Rocky mountains 
+
+The affect of bark beetle infestation on water yield in lodgepole pine forests in the Rocky mountains national park was exasmined following the five mortality stages that is presented in Pugh and Gordon (2013). Runoff was calculated after reduction of snow (Hedstrom and Pomeroy, 1998) and rain interception, infiltration and evapotranspiration ( Allen et al, 1988) for the living, red and grey stages (differing by LAI values).   
+
+``` {r ,echo=FALSE}
+# Load dataset, use data in functions in ecohydrotoolsBAR3 package
+
+setwd("/Users/baravni/Documents/Documents_master/master/R modelling/task1/Writing_Function/EcohydrotoolsBAR3/")
+source("R/canopyInterception.R")
+source("R/ExRadiation.R")
+source("R/Evapo_HS.R")
+source("R/runoffCalc.R")
+source("R/Water_yield_cold_env.R")
+library(roxygen2)
+library(devtools)
+document()
+
+#setwd("/Users/baravni/Documents/Documents_master/master/R modelling/task1/Writing_Function/EcohydrotoolsBAR3/data")
+data("metdata_REP")
+data("North_platte_obs")
+North_platte_obs = metdata
+rm(metdata)
+metdata_REP = metdata_REP[366:1826,]
+North_platte_obs = North_platte_obs[366:1826,]
+
+install.packages("NISTunits", dependencies = TRUE)
+library(NISTunits)
+install.packages("lubridate")
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(gridExtra)
+library(lubridate)
+```
+### Inputs:
+The code uses a daily precipitation (mm), temperature (C deg), and discharge (m^3/s) for the years 2011-2015 for Willow creek Pass in the Rocky mountains National Park in Colorado (figure 1). The dataset is taken from NRCS - Natural Resources Conservation Servies and National Water and Climate Center [link] (www.wcc.nrcs.usda.gov) 
+![figure 1. Study area](studyAreaFull2.png)
+figure 1. Study area (source: Pugh and Gordon, 2013) and the location of Willow Creek Pass reservoir (source: [link] (www.wcc.nrcs.usda.gov))
+
+### Code flowchart
+#### Model run
+The model is a one function (Water_yield_cold_env) model that gather (1) snow interception model (Hedstrom and Pomeroy, 1998) and rain interception for snowy and raini days respectivly. Next (2) evapotranspiration is claculated using extraterrestrial solar radiation model (Allen et al, 1988) and Hargreaves and Samani (1985) simple evapotranspiration model. The evapotranspiration is calculated as function of LAI (the highest LAI will transmit the maximal solar radiation). (3) Lastly, runoff is claculated. 
+LAI values are from Pugh and Gordon (2013) and maximal rain interception is from Swank (1968)
+```{r ,echo=TRUE}
+# Set rain data
+
+# Convert the accumulated precipitation to decreet amount (mm).
+P = diff(metdata_REP$PA)
+P[P < 0] = 0
+P = c(0, P)
+
+# Define the snow vs rain seasons
+preType = metdata_REP$TMAve < 0
+preType = preType*1
+
+# Add the precipitation depth to the metadata file.
+metdata_REP = data.frame(metdata_REP, P, preType)
+
+### Model frame ###
+monthly_runoff = Water_yield_cold_env(LAI_living = 1.56,LAI = 1.35, MS = 0.306, preType = metdata_REP$preType, Tair = metdata_REP$TMAve, P = metdata_REP$P, Smean = 6.6, L0 = 0, c = 0.678, date = metdata_REP$date, lat = 40.3428, Tave = metdata_REP$TMAve, Tmax = metdata_REP$TmMax, Tmin = metdata_REP$TMMin, InfilCap = 3, MaxStorage = 10, month = metdata_REP$month, year = metdata_REP$Year) 
+```
+### Sensitivity analysis: 
+Sensitivity analysis are perform to show how monthly runoff response to change in LAI values (LAI),infiltration capacity (InfilCap), the maximal soil storage capacity (MaxStorage) and the maximal rain interception (MS). 
+
+```{r ,echo=TRUE}
+# Sensitivity of rain interception to maximal canopy storage
+MS =  seq(from = 4, to = 11, by = 0.5)*(25.4/365)
+LAI = 1.56
+LAI_living = 1.56
+MaxCanopyStorage = MS*(LAI /LAI_living)
+
+MS_sens = rep(0, times=length(MS))
+for (i in 1:length(MS)){
+WY = canopyInterception(preType = metdata_REP$preType, Tair = metdata_REP$TMAve, LAI = LAI , P = metdata_REP$P, Smean = 6.6, L0 = 0, c = 0.678, MaxCanopyStorage = MaxCanopyStorage[i])
+ MS_sens[i] = sum(WY[preType == 0])
+}
+
+# plot 
+data = data.frame(MS = MS, Water_Yield = MS_sens)
+p5 = ggplot(data, aes(x=MS, y=Water_Yield)) +geom_point()+
+  labs(y="Total water yield (mm)", x="Interception capacity (mm/day)")
+
+
+# Sensitivity of snow and rain interception to LAI values
+MS = 0.306
+LAI = seq(from = 1, to = 1.56, by = 0.05)
+LAI_living = 1.56
+MaxCanopyStorage = MS*(LAI /LAI_living)
+LAI = seq(from = 1, to = 1.56, by = 0.05)
+LAI_sens = rep(0, times=length(LAI))
+for (i in 1:length(LAI)){
+WY = canopyInterception(preType = metdata_REP$preType, Tair = metdata_REP$TMAve, LAI = LAI[i] , P = metdata_REP$P, Smean = 6.6, L0 = 0, c = 0.678, MaxCanopyStorage = MaxCanopyStorage[i])
+#LAI_sens[i] = sum(WY[preType == 0]) # only for raini days
+#LAI_sens[i] = sum(WY[preType == 1]) # only for Snowy days
+LAI_sens[i] = sum(WY)
+}
+
+# plot 
+data = data.frame(LAI = LAI, Water_Yield = LAI_sens)
+p6 = ggplot(data, aes(x=LAI, y=Water_Yield)) +geom_point()+
+  labs(y="Total water yield (mm)", x="LAI")
+
+# Sensitivity of evapotranspiration to LAI
+LAI = seq(from = 1, to = 1.56, by = 0.05)
+LAI_living = 1.56
+LAIET_sens = rep(0, times=length(LAI))
+for (i in 1:length(LAI)){
+ET = Evapo_HS(date = metdata_REP$date, lat =40.3428 , LAI_living = LAI_living , LAI[i], Tave = metdata_REP$TMAve, Tmax = metdata_REP$TmMax, Tmin = metdata_REP$TMMin)
+LAIET_sens[i] = sum(ET)
+}
+# plot 
+data = data.frame(LAI = LAI, ET = LAIET_sens)
+p7 = ggplot(data, aes(x=LAI, y= ET)) +geom_point()+
+  labs(y="Total evapotranspiration (mm)", x="LAI")
+p7
+grid.arrange(p5,p6,p7)
+#Summaries
+change = data.frame(Max = max(MS_sens), Min = min(MS_sens), Range = max(MS_sens)- min(MS_sens))
+change[2,] = data.frame(Max = max(LAI_sens), Min = min(LAI_sens), Range = max(LAI_sens)- min(LAI_sens)) 
+change[3,] = data.frame(Max = max(LAIET_sens), Min = min(LAIET_sens), Range = max(LAIET_sens)- min(LAIET_sens)) 
+change = data.frame(Parm = c("MS", "LAI","LAIET"), change)
+
+# sensetivity of model output (runoff) to storage capacity
+MaxStorage = seq(from = 1, to = 25, by = 1)
+MaxStorage_sens = rep(0, times=length(MaxStorage))
+for (i in 1:length(MaxStorage)){
+monthly_runoff = Water_yield_cold_env(LAI_living = 1.56,LAI = 1.56, MS = 0.306, preType = metdata_REP$preType, Tair = metdata_REP$TMAve, P = metdata_REP$P, Smean = 6.6, L0 = 0, c = 0.678, date = metdata_REP$date, lat = 40.3428, Tave = metdata_REP$TMAve, Tmax = metdata_REP$TmMax, Tmin = metdata_REP$TMMin, InfilCap = 3, MaxStorage[i], month = metdata_REP$month, year = metdata_REP$Year)
+MaxStorage_sens[i] = sum(monthly_runoff)
+}
+# plot
+data = data.frame(MaxStorage = MaxStorage, Runoff = MaxStorage_sens)
+p1 = ggplot(data, aes(x=MaxStorage, y=Runoff)) +geom_point()+
+  labs(y="Total runoff (mm)", x="MaxStorage")
+
+# sensetivity of model output (runoff) to infiltration capacity
+InfilCap  = seq(from = 1, to = 25, by = 1)
+InfilCap_sens = rep(0, times=length(InfilCap))
+for (i in 1:length(InfilCap)){
+monthly_runoff = Water_yield_cold_env(LAI_living = 1.56,LAI = 1.56, MS = 0.306, preType = metdata_REP$preType, Tair = metdata_REP$TMAve, P = metdata_REP$P, Smean = 6.6, L0 = 0, c = 0.678, date = metdata_REP$date, lat = 40.3428, Tave = metdata_REP$TMAve, Tmax = metdata_REP$TmMax, Tmin = metdata_REP$TMMin, InfilCap[i], MaxStorage = 10, month = metdata_REP$month, year = metdata_REP$Year)
+InfilCap_sens[i] = sum(monthly_runoff)
+}
+# plot
+data = data.frame(InfilCap = InfilCap, Runoff = InfilCap_sens)
+p2 = ggplot(data, aes(x=InfilCap, y=Runoff)) +geom_point()+
+  labs(y="Total runoff (mm)", x="InfilCap")
+
+# sensetivity of model output (runoff) to MS
+MS =  seq(from = 4, to = 11, by = 0.5)*(25.4/365)
+MS_sens = rep(0, times=length(MS))
+for (i in 1:length(MS)){
+monthly_runoff = Water_yield_cold_env(LAI_living = 1.56, LAI = 1.56, MS = MS[i], preType = metdata_REP$preType, Tair = metdata_REP$TMAve, P = metdata_REP$P, Smean = 6.6, L0 = 0, c = 0.678, date = metdata_REP$date, lat = 40.3428, Tave = metdata_REP$TMAve, Tmax = metdata_REP$TmMax, Tmin = metdata_REP$TMMin, InfilCap = 3, MaxStorage = 10, month = metdata_REP$month, year = metdata_REP$Year)
+MS_sens[i] = sum(monthly_runoff)
+}
+# plot
+data = data.frame(MS = MS, Runoff = MS_sens)
+p3 = ggplot(data, aes(x=MS, y=Runoff)) +geom_point()+
+  labs(y="Total runoff (mm)", x="MS")
+
+# sensetivity of model output (runoff) to LAI
+LAI = seq(from = 1, to = 1.56, by = 0.05)
+LAI_sens = rep(0, times=length(LAI))
+for (i in 1:length(LAI)){
+monthly_runoff = Water_yield_cold_env(LAI_living = 1.56, LAI = LAI[i], MS = 0.306, preType = metdata_REP$preType, Tair = metdata_REP$TMAve, P = metdata_REP$P, Smean = 6.6, L0 = 0, c = 0.678, date = metdata_REP$date, lat = 40.3428, Tave = metdata_REP$TMAve, Tmax = metdata_REP$TmMax, Tmin = metdata_REP$TMMin, InfilCap = 3, MaxStorage = 10, month = metdata_REP$month, year = metdata_REP$Year)
+LAI_sens[i] = sum(monthly_runoff)
+}
+# plot
+data = data.frame(LAI = LAI, Runoff = LAI_sens)
+p4 = ggplot(data, aes(x=LAI, y=Runoff)) +geom_point()+
+  labs(y="Total runoff (mm)", x="LAI")
+
+grid.arrange(p1,p2,p3,p4)
+
+# Sensetivity summary
+change = data.frame(Max = max(MaxStorage_sens), Min = min(MaxStorage_sens), Range = max(MaxStorage_sens)- min(MaxStorage_sens))
+change[2,] = data.frame(Max = max(InfilCap_sens), Min = min(InfilCap_sens), Range = max(InfilCap_sens)- min(InfilCap_sens))
+change[3,] = data.frame(Max = max(MS_sens), Min = min(MS_sens), Range = max(MS_sens)- min(MS_sens))
+change[4,] = data.frame(Max = max(LAI_sens), Min = min(LAI_sens), Range = max(LAI_sens)- min(LAI_sens)) 
+change = data.frame(Parm = c("MaxStorage","InfilaCap", "MS", "LAI"), change)
+```
+
+![](Sensetivity_Summary.png)
+figure 2. sensitivity summary of model output (i.e. total runoff depth) to four parameters: storage capacity,infiltration capacity, maximal canopy storage and LAI values.
+
+From figure 2 we can learn that the model is highly sensitive to storage capacity and infiltration capacity. The model is least sensitive to maximal canopy storage (MS values are from 4.4 to 11.4 (information from Swank (1968)) according to the exact pine species.) Therefore we can omit this parameter from glue test. 
+
+### Glue test for the water yield model (different file)
+
+
+```{r ,echo=TRUE}
+# Set the LAI, InfilCap and MaxStorage values:
+LAI = seq(from = 1, to = 1.56, by = 0.05)
+InfilCap  = seq(from = 1, to = 10, by = 0.5)
+MaxStorage = seq(from = 1, to = 10, by = 0.5)
+
+# Set variables
+month_diff = diff(metdata_REP$month)
+month_diff[month_diff < 0] = 1
+month_index = which(month_diff %in% 1)
+month_index_end = c(month_index, length(metdata_REP$month))
+month_index_start = c(1,(month_index_end[1:length(month_index_end) - 1]+1))
+#month_list = c(metdata_REP$month[month_index_end],metdata_REP$month[[length(metdata_REP$month)]])
+#year_list = c(metdata_REP$Year[month_index_end],metdata_REP$Year[[length(metdata_REP$Year)]])
+month_list = metdata_REP$month[month_index_end]
+year_list = metdata_REP$Year[month_index_end]
+
+Runoff_phases = matrix(nrow = length(month_list), ncol = length(LAI)*length(InfilCap)*length(MaxStorage))
+it_no = rep(0, times=length(LAI)*length(InfilCap)*length(MaxStorage))
+parms = matrix(nrow=length(LAI)*length(InfilCap)*length(MaxStorage), ncol=3)
+colnames(parms) = c("LAI", "InfilCap", "MaxStorage")
+
+
+counter = 1
+for (n in 1:length(LAI)){
+  for (m in 1:length(InfilCap )){
+    for (k in 1:length(MaxStorage)) {
+      
+# Call the Water_yield_cold_env fn. to calculate monthly runoff 
+Runoff_phases[,counter] = Water_yield_cold_env(LAI_living = 1.56,LAI = LAI[n], MS =  0.306, preType = metdata_REP$preType, Tair = metdata_REP$TMAve, P = metdata_REP$P, Smean = 6.6, L0 = 0, c = 0.678, date = metdata_REP$date, lat = 40.3428, Tave = metdata_REP$TMAve, Tmax = metdata_REP$TmMax, Tmin = metdata_REP$TMMin, InfilCap = InfilCap[m], MaxStorage = MaxStorage[k], month = metdata_REP$month, year = metdata_REP$Year) 
+
+it_no[counter] = sprintf("%.2f_%.1f_%.1f", LAI[n], InfilCap[m], MaxStorage[k]) 
+parms[counter, "LAI"] = LAI[n]     
+parms[counter, "InfilCap"] = InfilCap[m]
+parms[counter, "MaxStorage"] = MaxStorage[k]
+counter = counter + 1
+   }
+  }
+}
+
+# Create data frame to runoff results:
+header = c("day", "month", "year", it_no)
+monthly_runoff = data.frame(day = rep(1, length(month_list)), month = month_list, year = year_list, runoff = Runoff_phases)
+colnames(monthly_runoff) = header
+monthly_runoff$date = as.Date(paste(monthly_runoff$year, monthly_runoff$month, monthly_runoff$day, sep="/"))
+
+# Arrange model runs as original modQ file
+nsims_MR = ncol(monthly_runoff)-1
+modQ = monthly_runoff[,4:(nsims_MR +1)] 
+#modQ = modQ[,1:4799]
+# Calculate the water year (October - September)
+wtr_yr <- function(dates, start_month=9) {
+  # Convert dates into POSIXlt
+  dates.posix = as.POSIXlt(dates)
+  # Year offset
+  offset = ifelse(dates.posix$mon >= start_month - 1, 1, 0)
+  # Water year
+  adj.year = dates.posix$year + 1900 + offset
+  # Return the water year
+  adj.year
+}
+ wy = wtr_yr(monthly_runoff$date,start_month=10 )
+ 
+# Monthly observe runoff values for GLUE
+# Convert mean discharge (m^3/s) into runoff depth (mm/day) for Willow creek reservoir (watershed size = 134 square miles) after reduction ofbaseflow (Milhous, 2002) base flow = 1.4 cms
+ Willow_discharge = metdata_REP$discharg
+ Willow_discharge[Willow_discharge>1.4] = Willow_discharge[Willow_discharge>1.4] - 1.4
+#Willow_discharge = ((metdata_REP$discharge-min(metdata_REP$discharge))/3.471e+8)*(60*60*24*1000) 
+Willow_discharge = (Willow_discharge/3.471e+8)*(60*60*24*1000) 
+# Convert mean discharge (m^3/s) into runoff depth (mm/day) for North Platte (watershed size = 2840 square miles) reduce base flow 15.77 cms
+North_platte_discharge  = North_platte_obs$Discharge
+North_platte_discharge[North_platte_discharge > 15.77]  = North_platte_discharge[North_platte_discharge >15.77]- 15.77 
+North_platte_discharge = (North_platte_discharge/7.3556e+9)*(60*60*24*1000)
+#North_platte_discharge = ((North_platte_obs$Discharge -min(North_platte_obs$Discharge))/7.3556e+9)*(60*60*24*1000)
+#wy_dis = wtr_yr(metdata_REP$date,start_month=10 )
+#Willow_obs = aggregate(Willow_discharge,by=list(metdata_REP$month, wy_dis), sum)
+Willow_obs = aggregate(Willow_discharge,by=list(metdata_REP$month, metdata_REP$Year), sum)
+North_platte_obs = aggregate(North_platte_discharge,by=list(metdata_REP$month,  metdata_REP$Year), sum)
+runoff_obs = rowMeans(data.frame(willow = Willow_obs[,3],NP = North_platte_obs[,3] ), na.rm = FALSE, dims = 1)
+
+# Convert date to Julian Day Number (JDN) 
+ yd = yday(monthly_runoff$date) 
+ 
+ # Create a serial numbers:
+ 
+ wdy = seq(from = 1, to = length(year_list), by = 1)
+
+ obsQ = data.frame(obs = runoff_obs, date = monthly_runoff$date, year = monthly_runoff$year, month = monthly_runoff$month, day = monthly_runoff$day, wy = wy, yd = yd, wdy = wdy )
+ 
+ # Arrange parametes file
+ 
+ parms = data.frame(parms, row = seq(from = 1, to = length(LAI)*length(InfilCap)*length(MaxStorage), by = 1))
+ #parms = parms[1:4799,]
+ # Save data frame as data file
+ setwd("/Users/baravni/Documents/Documents_master/master/R modelling/task1/Writing_Function/")
+save(obsQ, file="EcohydrotoolsBAR3/data/obsQ.RData")
+save(modQ, file="EcohydrotoolsBAR3/data/modQ.RData")
+save(parms, file="EcohydrotoolsBAR3/data/parms.RData")
+```
+ ### Run Glue test for the water yield model (different file)
+ 
+The best parameters that was found in the glue test are in use for the three mortality phases (living, red and grey) (source: Pugh and Gordon, 2013). 
+For this purpose, only InfilCap and Max storage are in use. The LAI values are taken from Pugh and Gordon (2013) to represent the tree condition in each stage. 
+
+```{r ,echo=TRUE}
+setwd("/Users/baravni/Documents/Documents_master/master/R modelling/task1/Writing_Function/EcohydrotoolsBAR3/data")
+data("bestParms")
+
+LAI = c(1.56, 1.35, 1.09)
+Runoff_phases = matrix(nrow = length(monthly_runoff$month), ncol = length(LAI))
+for (i in 1:length(LAI)){
+Runoff_phases[,i] = Water_yield_cold_env(LAI_living = 1.56, LAI = LAI[i], MS = 0.306, preType = metdata_REP$preType, Tair = metdata_REP$TMAve, P = metdata_REP$P, Smean = 6.6, L0 = 0, c = 0.678, date = metdata_REP$date, lat = 40.3428, Tave = metdata_REP$TMAve, Tmax = metdata_REP$TmMax, Tmin = metdata_REP$TMMin, InfilCap = bestParms$InfilCap, MaxStorage = bestParms$MaxStorage, month = metdata_REP$month, year = metdata_REP$Year)
+}
+
+
+```
+### Results
+The following graph represent the monthly runoff yield from living, red and grey stages. The results are corresponding to the results shown in Pugh and Gordon (2013).
+
+Two graphs are created for february and July for the three stages. 
+
+The apparent colour change in the pine canopy resulting by the beetle infestation, not affecting the runoff yield. Sharpe decrease in runoff amount is shown in the grey phase. In reality, the change is due to the infiltration increment, here the change is due to the ET values that increase due to the reduction of the canopy (LAI values).
+```{r, echo=FALSE}
+runoff_result = data.frame(runoff = Runoff_phases, month = monthly_runoff$month, year = monthly_runoff$year)
+rain.agg = aggregate(metdata_REP$P,by=list(metdata_REP$month, metdata_REP$Year), sum)
+# do some re-arranging so month and year are at the end
+rain.agg$P = rain.agg$x
+rain.agg$year = rain.agg$Group.2
+rain.agg$month = rain.agg$Group.1
+rain.agg = rain.agg[,4:6]
+Rain.dec = subset(rain.agg$P, rain.agg$month==12)
+# Set February plot
+Runoff.dec = subset(runoff_result, runoff_result$month==12)
+
+df <- data.frame(num = as.factor(c(rep(1,length(Runoff.dec$month)),rep(2,length(Runoff.dec$month)), rep(3,length(Runoff.dec$month)))),years = rep(Runoff.dec$year,3),runoff = c(Runoff.dec$runoff.1 ,Runoff.dec$runoff.2,Runoff.dec$runoff.3))
+
+
+require(ggplot2)
+
+p_dec = ggplot(df, aes(x = years, y = runoff, fill = num, color = num)) + geom_line(linetype = 1, size = 1) +
+scale_colour_manual('', labels = c("living", "red", "grey"), values = c(rgb(34, 94, 168, 200, maxColorValue=255),rgb(251,180,185, 200, maxColorValue=255),rgb(245, 177, 139, 200, maxColorValue=255))) + scale_fill_manual('', values = c(rgb(34, 94, 168, 200, maxColorValue=255),rgb(251,180,185, 200, maxColorValue=255),rgb(245, 177, 139, 200, maxColorValue=255)))+xlab("Year")+ylab("Runoff (mm)")
+
+# Set July plot
+Rain.jul = subset(rain.agg$P, rain.agg$month==7)
+Runoff.jul = subset(runoff_result, runoff_result$month==7)
+
+df <- data.frame(num = as.factor(c(rep(1,length(Runoff.jul$month)),rep(2,length(Runoff.jul$month)), rep(3,length(Runoff.jul$month)))),years = rep(Runoff.jul$year,3),runoff = c(Runoff.jul$runoff.1,Runoff.jul$runoff.2,Runoff.jul$runoff.3))
+
+p_jul = ggplot(df, aes(x = years, y = runoff, fill = num, color = num)) + geom_line(linetype = 1, size = 1) +
+scale_colour_manual('', labels = c("living", "red", "grey"), values = c(rgb(34, 94, 168, 200, maxColorValue=255),rgb(251,180,185, 200, maxColorValue=255),rgb(245, 177, 139, 200, maxColorValue=255))) + scale_fill_manual('', values = c(rgb(34, 94, 168, 200, maxColorValue=255),rgb(251,180,185, 200, maxColorValue=255),rgb(245, 177, 139, 200, maxColorValue=255)))+xlab("Year")+ylab("Runoff (mm)")
+
+# Rainfall Bar Plot
+
+rain.data <- data.frame(month = c(rep(12, 4), rep(7, 4)), year = rep(Runoff.jul$year, 2),rain = c( Rain.dec,Rain.jul))
+library(ggplot2)
+p_rain = ggplot(rain.data,aes(x=year,y=rain,fill=factor(month)))+
+  geom_bar(stat="identity",position="dodge")+
+  scale_fill_discrete(name="Month",
+                      breaks=c(12, 7),
+                      labels=c("December", "July"))+
+  xlab("Year")+ylab("Rain (mm)")
+grid.arrange(p_dec,p_jul,p_rain)
+```
+

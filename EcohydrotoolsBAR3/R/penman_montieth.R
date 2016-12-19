@@ -8,6 +8,7 @@
 #' @param     Rnet    (j/m2/day)      net radiation
 #' @param     gs      (s/mm)  surface conductance
 #' @param     ga      (s/mm)  aerodynamic conductance
+#' @param     dayl    (hour)  day length in hours
 #' @param     CP  =      1010.0 (J/kg*K) specific heat of air
 #' @param     Pair = 101325 (Pa)
 #' @author Naomi

@@ -1,0 +1,231 @@
+---
+title: "Getting started course tools"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Rstudio
+
+Rstudio will be the primary data analysis and visualization software that you will use for the course
+
+To install follow the instructions:
+
+You will first need R
+<https://cran.cnr.berkeley.edu/>
+
+Then R studio
+<https://www.rstudio.com/products/rstudio/download/>.
+
+# Github and Rstudio
+
+To link Rstudio and our version control software (Git), you need to first create a GitHub account at:
+
+<https://github.com/>
+
+Remember you user name and password - you will need thme
+
+and then configure your computer to understand/interact with git, by downloading git software
+
+
+<https://git-scm.com/download/>
+
+
+and then finally link it with R studio
+
+To do this: follow these instructions - get as far as creating a new project - for now leave the project empty; but make sure you create with a git repository
+
+<https://www.r-bloggers.com/rstudio-and-github/>
+
+When you get to the section on opening a shell, Rstudio may download additional software
+
+
+If you are using a newer version of MacOS, you may also need to install X-quartz so that R can open graphics windows on the fly
+
+<https://www.xquartz.org/>
+
+You will need to re-start R 
+
+# Install Packages
+load some libraries that are likely to be useful
+
+```{r install-packages, eval=F}
+# Run this chunk only once in your Console
+# Do not evaluate when knitting Rmarkdown
+
+# list of packages
+pkgs = c(
+  'readr',        # read csv
+  'readxl',       # read xls
+  'dplyr',        # data frame manipulation
+  'tidyr',        # data tidying
+  'ggplot2')      # graphics package
+    
+
+# install packages if not found
+for (p in pkgs){
+  if (!require(p, character.only=T)){
+    install.packages(p)
+  
+  }
+}
+```
+
+# Programming in R
+
+You have 3 options for writing R code
+
+*  directly type into the console (temporary)
+*  open an R script file (can be saved to git), useful for writing functions; next class!
+*  **add as a R module in an R Markdown file** (can be saved to git), helpful for documenting and presenting your work; I'm using an R Markdown file here
+
+
+
+
+
+# Simple example
+You will first need to download clim.txt from ; and move it to your working directory - the directory you created when you made your first project in Rstudio. 
+
+Now use the following R code to read that file in to R and do some basic analysis. Play with it a little and try different plots, aggregations, communting different variables.
+
+You man need to set your working directory to the project directory
+
+```{r readingexample, include=TRUE}
+
+# useful library for data clean up, manipulation, formating
+library(dplyr)
+
+# reading in text data; there are many other functions #that can be used to read other data types
+clim = read.table("data/clim.txt", sep=",", header=T)
+
+# clim is now a data frame; one of the most commonly used object types in R; it is like a matrix but can have a mixture of different data types 
+# see what columns are, look at first few lines
+head(clim)
+
+# or just the names
+names(clim)
+
+# or add to a new window (need dplyr library for this)
+View(clim)
+
+
+# to access a particular column use $ or column number
+
+head(clim$tmax)
+
+# to get a particular column and row, i.e rainfall on 5th day
+clim$rain[5]
+
+#or everything on the 10th day
+clim[10,]
+
+#first 5 rows of several columns
+clim[1:5, c("tmax","tmin","month")]
+
+# the 'c' denotes a vector in R
+city = c("Jerusalem","Tel Aviv","Tsfat")
+estheight = c(500,10,1000)
+
+# you can combine vectors into a data frame
+siteinfo = as.data.frame(cbind(city,estheight))
+siteinfo
+
+# you can subset
+tmp = subset(clim, clim$day==20 & clim$month==2 
+             & clim$year < 1950)
+tmp
+
+# generate R understandable dates
+clim$date = as.Date(paste(clim$day, clim$month, clim$year, sep="/"),"%d/%m/%Y")
+
+# look at the file
+View(clim)
+# see some summary statistics of the columns
+summary(clim)
+
+# create a new table that summarizes by wateryear, use mean for state variables, and sum for flux variables
+# this uses functions from the dplyr package
+a = clim %>% select(wy,month,tmax, tmin) %>% group_by(wy, month) %>% 
+    summarize_each(funs(mean))
+   
+b = clim %>% select(wy,month,rain) %>% group_by(wy, month) %>% 
+    summarize_each(funs(sum))
+
+# link data sets together (automatically uses shared colums)   
+clim.mwy = inner_join(a,b)
+head(clim.mwy)
+
+
+#add a new variable
+clim$tavg = (clim$tmin+clim$tmax)/2
+range(clim$tavg)
+range(clim$tmin)
+range(clim$tmax)
+
+max(clim$tmin)
+
+plot(clim$date, clim$tmax, type="l", col="blue", ylab="Max Daily T (C)")
+
+boxplot(clim.mwy$rain~clim.mwy$month, ylab="Monthly Rainfall (mm)", 
+        xlab="Month", col=clim.mwy$month)
+
+
+```
+
+
+
+
+# Git - how to use version control with your project
+
+R studio links nicely with git; you can use git to track changes both locally and in the remote repository
+
+Lets start by assuming you've set up the project as described above
+
+## Tracking things locally with git
+
+* Check on the file you want to stage
+* Commit
+     * This will create your master branch
+* Make a change to a file
+* Use diff to see what changed 
+     * you must save the file first
+* Commit changes
+* Use history to see how things have changed 
+* Repeat as you change things
+
+## Saving to your global github (for sharing)
+
+* Make sure you have committed all recent changes
+* get the http **address** from your github repo
+* Open a shell in Git tab in Rstudio
+
+type
+
+*git remote add origin* **address**  
+
+*git push -u origin master*
+
+* Notice how now under the Git tab you have colored arrows, you can now use these to push and pull from github to your local repo
+
+* now make a local change and use these to update your github repo
+
+* look at your repo online to see what you've done
+
+* notice how now in git commit  it will also track your branch in comparison with remote repo
+
+* if you want other people to be able to make changes to your repo, add them as collaborators on the github website for that repo, under settings (see option on left side)
+
+# Using existing (other people) repositories
+
+Find the repository on Github and get its link: Clone with Https:
+
+The link for my repository is
+<https://github.com/naomitague/HebrewU.git>
+
+Start R studio again and create a new project
+
+*  chose the option 'create from Git repository'
+*  use link you found on git site
+*  make sure you put this in a new directory so files don't conflict with other projects

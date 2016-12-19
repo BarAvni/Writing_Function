@@ -4,7 +4,7 @@
 #'
 #' @param     year  year
 #' @param     month month    
-#' @param     Tair  (deg C) mean montly air temperature
+#' @param     Tair  (deg C) mean monthly air temperature
 #' @param     TMDH  Total monthly daylight hours
 #' @author Bar Avni 
 #' @return monthly potential ET 
@@ -13,8 +13,6 @@ Thornthwaite =
   function(year, month, Tair, TMDH){
     
     #       Internal Variables
-    
- 
 
     #       Tk = Mean temperature of the month (deg k)
     #       MH_index = Monthly heat index (deg C)

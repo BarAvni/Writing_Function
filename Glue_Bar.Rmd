@@ -1,0 +1,265 @@
+---
+title: "Glue"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Water yield as function of bettle infestation in the Rocky mountains NP, Colorado (after Pugh and Gordon (2013) 
+### Glue test
+
+monthly_runoff is modelled runoff (organized by column) in order to make it easy, I'll set my data names and arrangment to class variables and datasets:
+
+modQ is modelled runoff (organized by column)
+obsQ is observed runoff
+stats is the parameter sets (organized by row)
+rows in stats correspond to columns in modQ
+
+the last column of modQ provides the date
+Note that often observed and modelled data have different date ranges - helpful to merge them
+before calculating performance measures
+
+```{r setup , echo=FALSE}
+library(plotly)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(gridExtra)
+library(lubridate)
+setwd("/Users/baravni/Documents/Documents_master/master/R modelling/task1/Writing_Function/EcohydrotoolsBAR3/")
+# Load data files
+data(modQ)
+data(obsQ)
+data(parms)
+#data(modQ3c)
+source("R/NSE.R")
+
+nsims = ncol(modQ)-1
+both = merge(modQ,obsQ, by=c("date"))
+# Rearrange the columns so the date column is at the end instead of occurring as the first column:
+
+# create data structures that just have data
+modQ.data = both[,2:(nsims+1)]
+obsQ.data = both$obs
+dates.data = both[,c("date","month","year","day","wy")]
+
+
+```
+
+Now lets create some performance metrics and add to link results with our parameter list
+```{r perf , echo=TRUE}
+
+# lets compute the Pearson Correlation coefficient of modeled and observed records:
+# I use tmp as an intermediate variable
+
+tmp = apply(modQ.data, 2, cor, y=obsQ.data)
+# plot a histogram to make sure everything looks OK
+hist(tmp, main="Histogram of Correlation", xlab="Cor", col="blue")
+
+# link this with parameters, the number of rows of parms should be the same as the size of tmp
+# copy to a new data frame to store results
+stats=parms
+stats$cor = tmp
+
+# try another performance metric, one that we built ourselves (NSE in this case), note the use of "o"
+tmp = apply(modQ.data, 2, NSE, o=obsQ.data)
+stats$nse = tmp
+
+# how do performance metric compare
+
+plot(stats$nse, stats$cor, ylab="Correlation", xlab="NSE", ylim=c(0,1), xlim=c(-10,1))
+
+# another useful metric is found by taking the log of flows, if you have zero values in observed or modelled you will need to correct for this by adding a small amount
+tmp = apply(log(modQ.data)+0.0001,2, NSE, o=log(obsQ.data)+0.0001)
+stats$nselog = tmp
+# how about annual flows (wy = water year)
+modQ.data.wy = aggregate(modQ.data, by=list(dates.data$wy), sum)
+obsQ.data.wy = aggregate(obsQ.data, by=list(dates.data$wy), sum)
+# note the aggregation will add a column for the aggregation variable
+
+# simple on the fly function
+mperr = function(m,o) {
+  err = m-o
+  res = ifelse(o != 0, err/o, NA)
+  return(mean(res)*100) }
+# apply to our annual data, making sure we don't include the aggregation variable
+tmp = apply(modQ.data.wy[,(2:(nsims+1))],2, mperr, o=obsQ.data.wy[,2])
+stats$mperr.wy = tmp
+
+plot(stats$nse, stats$mperr.wy)
+
+```
+
+To select "reasonable" model values we need an overall accuracy measure
+and then we need to decide an a threshold above which we consider the model reasonable
+Here's an example - but you could come up with many possibilies for an accuracy measure - depending on what you are 'testing' in your model
+
+```{r accuracy , echo=TRUE}
+
+#pmax is used to apply to whole vector; 
+# note that we need to normalized everything to something between 0 and 1, with 1 being better
+# negative nse values are generally poor - anything below zero is 'random'
+#stats$accuracy=pmax(0.0,stats$nse)*pmax(0.0, stats$nselog)*pmax(0.0,(1-abs(stats$mperr/100)))
+#stats$accuracy=pmax(0.0,stats$nse)*pmax(0.0,(1-abs(stats$mperr/100)))
+
+# pmax(0.0,stats$nse) is zero (all original bellow zero), pmax(0.0, stats$nselog) is all infinity.
+stats$accuracy=pmax(0.0,(1-abs(stats$mperr/100)))*pmax(0.0, abs(stats$cor))
+
+summary(stats$accuracy)
+hist(stats$accuracy, main="Accuracy")
+
+#Select behavioral or acceptable parameters sets
+
+threshold = 0.3
+stats.acc = subset(stats, stats$accuracy > threshold)
+
+# as an alternative  what if you want the top N parameter sets
+#topN = 50
+#tmp<-stats[order(stats$accuracy,decreasing=T),]
+#stats.acc=tmp[1:topN,]
+
+# Save the best parameters
+setwd("/Users/baravni/Documents/Documents_master/master/R modelling/task1/Writing_Function/")
+bestParms = stats.acc[1,1:3]
+save(bestParms, file="EcohydrotoolsBAR3/data/bestParms.RData")
+```
+
+Now we have everything we need for GLUE,
+here we compute MLE estimate and 95% confidence bounds
+
+```{r GLUE , echo=TRUE}
+
+
+# create a weight for each parameter set based on its relative accuracy
+max_acc=max(stats.acc$accuracy)
+min_acc=min(stats.acc$accuracy)
+stats.acc$w_acc=(stats.acc$accuracy-min_acc)/(max_acc-min_acc)
+sum_acc=sum(stats.acc$accuracy)
+stats.acc$wt_acc=stats.acc$accuracy/sum_acc
+
+Nacc = nrow(stats.acc)
+
+# generate streamflow as weighted average of all acceptable parameter sets
+
+# remember columns in modQ are rows in parms
+accept.cols = stats.acc$row
+accept.wts = stats.acc$wt_acc
+aver.flow = apply(modQ.data[,accept.cols],1, weighted.mean, accept.wts)
+
+# calculate upper and lower confidence bounds 95%
+install.packages("Hmisc")
+library(Hmisc)
+glue.res=apply(modQ.data[,accept.cols],1,"wtd.quantile",weights=accept.wts,prob=c(0.05,0.975),normwt=T)
+glue.res=as.data.frame(t(glue.res))
+colnames(glue.res)=c("low","high")
+
+# plotting runoff for all acceptable parameter sets
+tmp = stack(modQ.data[,accept.cols])
+maxflow = max(tmp$values)
+minflow = min(tmp$values)
+
+#dev.off()
+
+layout(rbind(1,2), heights=c(7,1))  # put legend on bottom 1/8th of the chart
+
+plot(aver.flow,type="l",lwd=1, lty=2, xlab="Time(month)",ylab="Runoff(mm/month)",main="GLUE", ylim=c(minflow,maxflow))
+
+x<-1:nrow(glue.res)
+polygon(c(x,rev(x)),c(glue.res$low,rev(glue.res$high)),col="pink",border=NA)
+lines(obsQ.data,col="red",lwd=2)
+
+# setup for no margins on the legend
+par(mar=c(0, 0, 0, 0))
+# c(bottom, left, top, right)
+plot.new()
+legend('center','groups',c("95% confidence limit","weighted mean", "observation"), lty = c(1,2,1),
+       lwd=c(4,3,2), col=c("pink","black","red"),ncol=3,bty ="n")
+#legend("topright", legend=c("95% confidence limit","weighted mean", "observation"), col=c("pink","black","red"), lty=c(1,1,1), lwd=c(4,3,2))
+lines(aver.flow,lwd=2)
+
+
+
+
+```
+Now we might want to see how parameter uncertainty impacts other estimates - For example February and June flow
+
+Additional test was done to the summer and winter months separately due to the use of different models to snow and rain interception.   
+```{r GLUE2 , echo=TRUE}
+modQ.mwy = aggregate(modQ.data[,1:nsims],by=list(dates.data$month, dates.data$wy), sum)
+# do some re-arranging so month and year are at the end
+modQ.mwy$wy = modQ.mwy$Group.2
+modQ.mwy$month = modQ.mwy$Group.1
+modQ.mwy = modQ.mwy[,3:(nsims+4)]
+
+#same with obs
+obsQ.mwy = aggregate(obsQ.data,by=list(dates.data$month, dates.data$wy), sum)
+# do some re-arranging so month and year are at the end
+obsQ.mwy$wy = obsQ.mwy$Group.2
+obsQ.mwy$month = obsQ.mwy$Group.1
+obsQ.mwy = obsQ.mwy[,3:4]
+
+
+# lets look at February (snow interception model)
+modQ.feb = subset(modQ.mwy, modQ.mwy$month==2)
+# lets look at how monthly streamflow varies for each year across the range across all parameter
+#boxplot(t(modQ.feb[,1:nsims]), ylab="February Flow", names=modQ.feb$wy)
+
+tmp = t(modQ.feb[,1:nsims])
+tmp = c(tmp[,1],tmp[,2],tmp[,3],tmp[,4])
+data.feb = data.frame(Runoff = tmp, Years = factor(rep(c("2012","2013","2014", "2015"), each=nsims)))
+p5 = ggplot(data.feb, aes(x=Years, y=Runoff)) + geom_boxplot()
+p5=p5+labs(y="Runoff (mm)", x="Years")
+p5
+# now just our acceptable parameters
+#boxplot(t(modQ.feb[,accept.cols]), ylab="February Flow", names=modQ.feb$wy)
+
+tmp = t(modQ.feb[,accept.cols])
+tmp = c(tmp[,1],tmp[,2],tmp[,3],tmp[,4])
+data.feb.acc = data.frame(Runoff = tmp, Years = factor(rep(c("2012","2013","2014", "2015"), each=length(accept.cols))))
+p6 = ggplot(data.feb.acc, aes(x=Years, y=Runoff)) + geom_boxplot()
+p6=p6+labs(y="Runoff (mm)", x="Years")
+p6
+
+# what about uncertainty in mean February flow (overall whole simulation period)
+# calculate mean february flow
+modQ.feb.mean = apply(modQ.feb[,1:nsims], 2,mean)
+
+# we use stack to put them all together
+boxplot(modQ.feb.mean[accept.cols], ylab="February Flow")
+# to find average
+feb.wt.mean = weighted.mean(modQ.feb.mean[accept.cols],w=accept.wts)
+points(feb.wt.mean, col="red", pch="*", cex=3)
+
+# June Flow (rainfall interception model)
+modQ.jun = subset(modQ.mwy, modQ.mwy$month==6)
+# lets look at how monthly streamflow varies for each year across the range across all parameter
+boxplot(t(modQ.jun[,1:nsims]), ylab="June Flow", names=modQ.jun$wy)
+
+tmp = t(modQ.jun[,1:nsims])
+tmp = c(tmp[,1],tmp[,2],tmp[,3],tmp[,4])
+data.jun = data.frame(Runoff = tmp, Years = factor(rep(c("2012","2013","2014", "2015"), each=nsims)))
+p7 = ggplot(data.jun, aes(x=Years, y=Runoff)) + geom_boxplot()
+p7=p7+labs(y="Runoff (mm)", x="Years")
+p7
+# now just our acceptable parameters
+#boxplot(t(modQ.feb[,accept.cols]), ylab="February Flow", names=modQ.feb$wy)
+
+tmp = t(modQ.jun[,accept.cols])
+tmp = c(tmp[,1],tmp[,2],tmp[,3],tmp[,4])
+data.jun.acc = data.frame(Runoff = tmp, Years = factor(rep(c("2012","2013","2014", "2015"), each=length(accept.cols))))
+p8 = ggplot(data.jun.acc, aes(x=Years, y=Runoff)) + geom_boxplot()
+p8=p8+labs(y="Runoff (mm)", x="Years")
+p8
+
+grid.arrange(p5,p6,p7,p8)
+#Uncertainty in mean June flow (overall whole simulation period)
+# calculate mean June flow
+modQ.jun.mean = apply(modQ.jun[,1:nsims], 2,mean)
+
+# we use stack to put them all together
+boxplot(modQ.jun.mean[accept.cols], ylab="June Flow")
+# to find average
+jun.wt.mean = weighted.mean(modQ.jun.mean[accept.cols],w=accept.wts)
+points(jun.wt.mean, col="red", pch="*", cex=3)

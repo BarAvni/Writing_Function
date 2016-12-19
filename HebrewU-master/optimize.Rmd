@@ -1,0 +1,38 @@
+---
+title: "optimize"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Optimize
+
+
+
+```{r runopt, echo=TRUE}
+crop.pars = c(ts=0.4, tp=0.5, base.yield=500, Topt=25, max.water=800)
+
+compute_profit(T=c(20,30,25),P=c(250,144,23),irr=200,discount=0.01,price=50, cost=1500,crop.pars)
+
+optimize(compute_profit, lower=0, upper=400, T=c(20,30,25), P=c(250,144,100), discount=0.01, price=50, cost=150, crop.pars=crop.pars,  maximum=T)
+
+optimize(compute_profit, lower=0, upper=400, T=c(20,30,25), P=c(200,750,20), discount=0.01, price=50, cost=24, crop.pars=crop.pars,  maximum=T)
+
+cost = seq(from=1, to=100, by=0.5)
+save.optimal.irr = matrix(nrow=length(cost), ncol=2)
+colnames(save.optimal.irr) = c("irr","profit")
+
+
+for (i in 1:length(cost)) {
+
+res = optimize(compute_profit, lower=0, upper=400, T=c(20,30,25), P=c(200,750,20), discount=0.01, price=50, cost=cost[i], crop.pars=crop.pars,  maximum=T)
+save.optimal.irr[i,"irr"] = res$maximum
+save.optimal.irr[i,"profit"] = res$objective
+}
+
+plot(save.optimal.irr[,"irr"], type="l", ylab="optimal irrigation amount", xlab="Cost of irrigation/unit",  lwd=3, col="green")
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.

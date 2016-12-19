@@ -1,0 +1,262 @@
+---
+title: "Package_creation"
+author: "Bar Avni"
+date: "11/22/2016"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+### Runoff calculation of three lodgpole pine mortality stages in a snow dominated environment of the Rocky mountains 
+
+The affect of bark beetle infestation on water yield in lodgepole pine forests in the Rocky mountains national park was exasmined following the five mortality stages, conceptual model (Pugh and Gordon, 2013). Runoff was calculated from snow pack on the ground. Result was calculated from snow canopy interception model (Hedstrom and Pomeroy, 1998) for the living, red and grey stages (differing by LAI values).   
+
+```{r ,echo=FALSE}
+# Load dataset, use data in functions in ecohydrotoolsBAR3 package
+
+setwd("/Users/baravni/Documents/Documents_master/master/R modelling/task1/Writing_Function/EcohydrotoolsBAR3/")
+source("R/canopyInterception.R")
+source("R/ExRadiation.R")
+source("R/Evapo_HS.R")
+source("R/runoffCalc.R")
+library(roxygen2)
+library(devtools)
+document()
+
+# getting data
+#setwd("/Users/baravni/Documents/Documents_master/master/R modelling/task1/Writing_Function/")
+#metdata_REP = read.table("data/Rabbit_Ears_Pass_metdata.txt", header=T)
+#metdata_REP$date = as.Date(paste(metdata_REP$Year, metdata_REP$month, metdata_REP$day, sep="/"))
+# one can save metdata in R format to the package
+#dir.create("ecohydrotoolsBAR3/data")
+#save(metdata_REP, file="EcohydrotoolsBAR3/data/metdata_REP.RData")
+
+setwd("/Users/baravni/Documents/Documents_master/master/R modelling/task1/Writing_Function/EcohydrotoolsBAR3/data")
+data("metdata_REP")
+```
+### Code flowchart
+#### Model run
+The code uses a daily snow water equivalent (mm), temperature (C deg), and discharge (m^3/s) for the years 2011-2015 for Willow creek Pass in the Rocky mountains National Park in Colorado. The dataset is taken from NRCS - Natural Resources Conservation Servies and National Water and Climate Center [link] (www.wcc.nrcs.usda.gov) 
+#### add location map
+
+```{r ,echo=TRUE}
+
+install.packages("NISTunits", dependencies = TRUE)
+library(NISTunits)
+install.packages("lubridate")
+
+# Set the LAI data (source: Pugh and Gordon, 2013) use as a parameters in the sensitivity alnalysis:
+LAI = 1.56
+
+# Set infiltration capacity values (parameter for use in the sensitivity analysis)
+infilCap = 3
+
+# Convert the accumulated precipitation to decreet amount (mm).
+P = diff(metdata_REP$PA)
+#P = diff(metdata_REP$SWE)
+P[P < 0] = 0
+P = c(0, P)
+
+# Add the precipitation depth to the metadata file.
+metdata_REP = data.frame(metdata_REP, P)
+
+### Model frame ###
+# 1. Call the canopyInterception fn. to compute snow fall interception
+#I_LAI <- sapply(Tair = metdata_REP$TMAve, LAI, P = metdata_REP$P , Smean = 6.6, L0 = 0, c = 0.678, canopyInterception)
+I_LAI = canopyInterception(Tair = metdata_REP$TMAve, LAI, P = metdata_REP$P , Smean = 6.6, L0 = 0, c = 0.678)
+
+# 2. Call the ExRadiation fn. to calculate daily extraterrestrial solar radiation following the formulation presented in Allen et al (1988)
+Ra = ExRadiation(metdata_REP$date, lat = 40.3428)
+
+# 3. Call the Evapo_HS fn. to calculate the daily evapotranspiration estimation using the Hargreaves and Samani (1985) method
+ET = Evapo_HS(Ra, metdata_REP$TMAve, metdata_REP$TmMax, metdata_REP$TMMin)
+
+# 4. Call the runoffCalc fn. to calculate monthly runoff 
+Runoff_phases = runoffCalc(P = metdata_REP$P, I_LAI , InfilCap = infilCap , MaxStorage = 10, ET = ET, month = metdata_REP$month, year = metdata_REP$Year)
+### End of model frame ####
+```
+### Sensitivity analysis: 
+Sensitivity analysis are perform to show how monthly runoff response to change in LAI values and infiltration rates. This two parameters represent the bark beetle infestation, where the infected trees are slowly dying therefore the tree canopy is reduced (reduction in LAI values) and infiltration rates are amplified. 
+
+Run the code three times for the 3 LAI values representing the 3 mortality stages:
+```{r ,echo=TRUE}
+# Set the LAI, InfilCap and MaxStorage values:
+LAI = seq(from = 1, to = 1.6, by = 0.05)
+InfilCap  = seq(from = 1, to = 20, by = 2)
+MaxStorage = seq(from = 1, to = 20, by = 1)
+
+# Set variables
+
+month_diff = diff(metdata_REP$month)
+month_diff[month_diff < 0] = 1
+month_index = which(month_diff %in% 1)
+month_index_end = c(month_index, length(metdata_REP$month))
+month_index_start = c(1,(month_index_end[1:length(month_index_end) - 1]+1))
+#month_list = c(metdata_REP$month[month_index_end],metdata_REP$month[[length(metdata_REP$month)]])
+#year_list = c(metdata_REP$Year[month_index_end],metdata_REP$Year[[length(metdata_REP$Year)]])
+month_list = metdata_REP$month[month_index_end]
+year_list = metdata_REP$Year[month_index_end]
+
+Runoff_phases = matrix(nrow = length(month_list), ncol = length(LAI)*length(InfilCap)*length(MaxStorage))
+it_no = rep(0, times=length(LAI)*length(InfilCap)*length(MaxStorage))
+parms = matrix(nrow=length(LAI)*length(InfilCap)*length(MaxStorage), ncol=3)
+colnames(parms) = c("LAI", "InfilCap", "MaxStorage")
+
+  ### Model frame ###
+# 1. Call the ExRadiation fn. to calculate daily extraterrestrial solar radiation following the formulation presented in Allen et al (1988)
+Ra = ExRadiation(metdata_REP$date, lat = 40.3428)
+
+# 2. Call the Evapo_HS fn. to calculate the daily evapotranspiration estimation using the Hargreaves and Samani (1985) method
+ET = Evapo_HS(Ra, metdata_REP$TMAve, metdata_REP$TmMax, metdata_REP$TMMin)
+
+# 3. Call the canopyInterception fn. to compute snow fall interception
+counter = 1
+for (n in 1:length(LAI)){
+#I_LAI <- sapply(Tair = metdata_REP$TMAve, LAI[n], P = metdata_REP$P , Smean = 6.6, L0 = 0, c = 0.678, canopyInterception)
+I_LAI = canopyInterception(Tair = metdata_REP$TMAve, LAI[n], P = metdata_REP$P , Smean = 6.6, L0 = 0, c = 0.678)
+  for (m in 1:length(InfilCap )){
+    for (k in 1:length(MaxStorage)) {
+# 4. Call the runoffCalc fn. to calculate monthly runoff 
+Runoff_phases[,counter] = runoffCalc(P = metdata_REP$P, I_LAI , InfilCap = InfilCap[m], MaxStorage = MaxStorage[k], ET = ET, month = metdata_REP$month, year = metdata_REP$Year)
+### End of model frame #### 
+it_no[counter] = sprintf("%.2f_%.0f_%.0f", LAI[n], InfilCap[m],MaxStorage[k]) 
+parms[counter, "LAI"] = LAI[n]     
+parms[counter, "InfilCap"] = InfilCap[m]
+parms[counter, "MaxStorage"] = MaxStorage[k]
+counter = counter + 1
+   }
+  }
+}
+
+
+# Create data frame to runoff results:
+header = c("day", "month", "year", it_no)
+monthly_runoff = data.frame(day = rep(1, length(month_list)), month = month_list, year = year_list, runoff = Runoff_phases)
+colnames(monthly_runoff) = header
+monthly_runoff$date = as.Date(paste(monthly_runoff$year, monthly_runoff$month, monthly_runoff$day, sep="/"))
+
+# Arrange model runs as original modQ file
+nsims_MR = ncol(monthly_runoff)-1
+modQ = monthly_runoff[,4:(nsims_MR +1)] 
+
+# Calculate the water year (October - September)
+wtr_yr <- function(dates, start_month=9) {
+  # Convert dates into POSIXlt
+  dates.posix = as.POSIXlt(dates)
+  # Year offset
+  offset = ifelse(dates.posix$mon >= start_month - 1, 1, 0)
+  # Water year
+  adj.year = dates.posix$year + 1900 + offset
+  # Return the water year
+  adj.year
+}
+ wy = wtr_yr(monthly_runoff$date,start_month=10 )
+ 
+# Monthly observe runoff values for GLUE
+# Convert mean discharge (m^3/s) into runoff depth (mm/day)
+runoff_depth = metdata_REP$discharge 
+runoff_depth = (runoff_depth/3.471e+8)*(60*60*24*1000) # Willow ck reservior (watershed size = 134 square miles)
+wy_dis = wtr_yr(metdata_REP$date,start_month=10 )
+runoff_obs = aggregate(runoff_depth,by=list(metdata_REP$month, wy_dis), sum)
+runoff_obs = runoff_obs[,3]
+
+# Convert date to Julian Day Number (JDN) 
+ yd = yday(monthly_runoff$date) 
+ 
+ # Create a serial numbers:
+ 
+ wdy = seq(from = 1, to = length(year_list), by = 1)
+
+ obsQ = data.frame(obs = runoff_obs, date = monthly_runoff$date, year = monthly_runoff$year, month = monthly_runoff$month, day = monthly_runoff$day, wy = wy, yd = yd, wdy = wdy )
+ 
+ # Arrange parametes file
+ 
+ parms = data.frame(parms, row = seq(from = 1, to = length(LAI)*length(InfilCap)*length(MaxStorage), by = 1))
+
+ # Save data frame as data file
+setwd("/Users/baravni/Documents/Documents_master/master/R modelling/task1/Writing_Function/")
+save(obsQ, file="EcohydrotoolsBAR3/data/obsQ.RData")
+save(modQ, file="EcohydrotoolsBAR3/data/modQ.RData")
+save(parms, file="EcohydrotoolsBAR3/data/parms.RData")
+```
+ ### Run Glue test for the water yield model (different file)
+ 
+The best parameters that was found in the glue test are in use for the three mortality phases (living, red and grey) (source: Pugh and Gordon, 2013). 
+For this purpose, olnly InfilCap and Max storage are in use. The LAI values are taken from Pugh and Gordon (2013) to represent the tree condition in each stage. 
+
+```{r ,echo=TRUE}
+### Model frame ###
+# 1. Call the canopyInterception fn. to compute snow fall interception
+LAI = c(1.56, 1.35, 0.13)
+I_LAI <- sapply(Tair = metdata_REP$TMAve, LAI, P = metdata_REP$P , Smean = 6.6, L0 = 0, c = 0.678, canopyInterception)
+
+# 2. Call the ExRadiation fn. to calculate daily extraterrestrial solar radiation following the formulation presented in Allen et al (1988)
+Ra = ExRadiation(metdata_REP$date, lat = 40.3428)
+
+# 3. Call the Evapo_HS fn. to calculate the daily evapotranspiration estimation using the Hargreaves and Samani (1985) method
+ET = Evapo_HS(Ra, metdata_REP$TMAve, metdata_REP$TmMax, metdata_REP$TMMin)
+
+# 4. Call the runoffCalc fn. to calculate monthly runoff
+setwd("/Users/baravni/Documents/Documents_master/master/R modelling/task1/Writing_Function/EcohydrotoolsBAR3/data")
+data("bestParms")
+
+Runoff_phases = matrix(nrow = length(month_list), ncol = length(LAI))
+for (ind in 1:length(LAI)) {Runoff_phases[,ind] = runoffCalc(P = metdata_REP$P, I_LAI[,ind] , InfilCap = InfilCap, MaxStorage = MaxStorage, ET = ET, month = metdata_REP$month, year = metdata_REP$Year)}
+
+```
+
+### Results
+The following graph represent the monthly runoff yield from living, red and grey stages. The results are corresponding to the results shown in Pugh and Gordon (2013).
+
+Two graphs are created for february and July for the three stages. 
+
+The apparent colour change in the pine canopy resulting by the beetle infestation, not affecting the runoff yield. Sharpe decrease in runoff amount is shown in the grey phase. In reality, the change is due to the infiltration increment, here the change is due to the ET values that increase due to the reduction of the canopy (LAI values).
+```{r, echo=FALSE}
+month = metdata_REP$month[month_index_end]
+year = metdata_REP$Year[month_index_end]
+runoff_result = data.frame(runoff = Runoff_phases, month, year)
+# Set February plot
+rain.agg = aggregate(metdata_REP$P,by=list(metdata_REP$month, metdata_REP$Year), sum)
+# do some re-arranging so month and year are at the end
+rain.agg$P = rain.agg$x
+rain.agg$year = rain.agg$Group.2
+rain.agg$month = rain.agg$Group.1
+rain.agg = rain.agg[,4:6]
+Rain.feb = subset(rain.agg$P, rain.agg$month==2)
+Runoff.feb = subset(runoff_result, runoff_result$month==2)
+
+df <- data.frame(num = as.factor(c(rep(1,length(Runoff.feb$month)),rep(2,length(Runoff.feb$month)), rep(3,length(Runoff.feb$month)))),years = rep(Runoff.feb$year,3),runoff = c(Runoff.feb$X1,Runoff.feb$X2,Runoff.feb$X3))
+
+
+require(ggplot2)
+
+ggplot(df, aes(x = years, y = runoff, fill = num, color = num)) + geom_line(linetype = 1, size = 1) +
+scale_colour_manual('', labels = c("living", "red", "grey"), values = c(rgb(34, 94, 168, 200, maxColorValue=255),rgb(251,180,185, 200, maxColorValue=255),rgb(245, 177, 139, 200, maxColorValue=255))) + scale_fill_manual('', values = c(rgb(34, 94, 168, 200, maxColorValue=255),rgb(251,180,185, 200, maxColorValue=255),rgb(245, 177, 139, 200, maxColorValue=255)))
+
+# Set July plot
+Rain.jul = subset(rain.agg$P, rain.agg$month==7)
+Runoff.jul = subset(runoff_result, runoff_result$month==7)
+
+df <- data.frame(num = as.factor(c(rep(1,length(Runoff.jul$month)),rep(2,length(Runoff.jul$month)), rep(3,length(Runoff.jul$month)))),years = rep(Runoff.jul$year,3),runoff = c(Runoff.jul$runoff.1,Runoff.jul$runoff.2,Runoff.jul$runoff.3))
+
+
+require(ggplot2)
+
+ggplot(df, aes(x = years, y = runoff, fill = num, color = num)) + geom_line(linetype = 1, size = 1) +
+scale_colour_manual('', labels = c("living", "red", "grey"), values = c(rgb(34, 94, 168, 200, maxColorValue=255),rgb(251,180,185, 200, maxColorValue=255),rgb(245, 177, 139, 200, maxColorValue=255))) + scale_fill_manual('', values = c(rgb(34, 94, 168, 200, maxColorValue=255),rgb(251,180,185, 200, maxColorValue=255),rgb(245, 177, 139, 200, maxColorValue=255)))
+
+# Rainfall Bar Plot
+
+rain.data <- data.frame(month = c(rep(2, 5), rep(7, 5)), year = rep(Runoff.jul$year, 2),rain = c( Rain.feb,Rain.jul))
+library(ggplot2)
+ggplot(rain.data,aes(x=year,y=rain,fill=factor(month)))+
+  geom_bar(stat="identity",position="dodge")+
+  scale_fill_discrete(name="Month",
+                      breaks=c(2, 7),
+                      labels=c("February", "July"))+
+  xlab("Year")+ylab("Rain (mm)")
+
+```
+

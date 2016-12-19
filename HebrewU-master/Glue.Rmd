@@ -1,0 +1,198 @@
+---
+title: "Glue"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Glue Example
+
+modQ is modelled streamflow (organized by column)
+obsQ is observed streamflow
+stats is the parameter sets (organized by row)
+rows in stats correspond to columns in modQ
+
+the last column of modQ provides the date
+Note that often observed and modelled data have different date ranges - helpful to merge them
+before calculating performance measures
+
+```{r setup , echo=FALSE}
+
+setwd("/Users/baravni/Documents/Documents_master/master/R modelling/task1/Writing_Function/HebrewU-master/ecohydrotools/")
+#if you've downloaded the project, build and reload
+data(modQ)
+data(obsQ)
+data(parms)
+data(modQ3c)
+# or if you just want the datasets
+load("ecohydrotools/data/modQ.RData")
+load("ecohydrotools/data/obsQ.RData")
+load("ecohydrotools/data/parms.RData")
+#source("ecohydrotools/R/NSE.R")
+source("R/NSE.R")
+# note where data information is
+head(obsQ)
+head(modQ)
+
+nsims = ncol(modQ)-1
+both = merge(modQ,obsQ, by=c("date"))
+# Rearrange the columns so the date column is at the end instead of occurring as the first column:
+
+# create data structures that just have data
+modQ.data = both[,2:(nsims+1)]
+obsQ.data = both$obs
+dates.data = both[,c("date","month","year","day","wy")]
+
+
+```
+
+Now lets create some performance metrics and add to link results with our parameter list
+```{r perf , echo=TRUE}
+
+# lets compute the Pearson Correlation coefficient of modeled and observed records:
+# I use tmp as an intermediate variable
+
+tmp = apply(modQ.data, 2, cor, y=obsQ.data)
+# plot a histogram to make sure everything looks OK
+hist(tmp, main="Histogram of Correlation", xlab="Cor", col="blue")
+
+# link this with parameters, the number of rows of parms should be the same as the size of tmp
+# copy to a new data frame to store results
+stats=parms
+stats$cor = tmp
+
+# try another performance metric, one that we built ourselves (NSE in this case), note the use of "o"
+tmp = apply(modQ.data, 2, NSE, o=obsQ.data)
+stats$nse = tmp
+
+# how do performance metric compare
+
+plot(stats$nse, stats$cor, ylab="Correlation", xlab="NSE", ylim=c(0,1), xlim=c(0,1))
+
+# another useful metric is found by taking the log of flows, if you have zero values in observed or modelled you will need to correct for this by adding a small amount
+tmp = apply(log(modQ.data)+0.0001,2, NSE, o=log(obsQ.data)+0.0001)
+stats$nselog = tmp
+# how about annual flows (wy = water year)
+modQ.data.wy = aggregate(modQ.data, by=list(dates.data$wy), sum)
+obsQ.data.wy = aggregate(obsQ.data, by=list(dates.data$wy), sum)
+# note the aggregation will add a column for the aggregation variable
+
+# simple on the fly function
+mperr = function(m,o) {
+  err = m-o
+  res = ifelse(o != 0, err/o, NA)
+  return(mean(res)*100) }
+# apply to our annual data, making sure we don't include the aggregation variable
+tmp = apply(modQ.data.wy[,(2:(nsims+1))],2, mperr, o=obsQ.data.wy[,2])
+stats$mperr.wy = tmp
+
+plot(stats$nse, stats$mperr.wy)
+
+```
+
+To select "reasonable" model values we need an overall accuracy measure
+and then we need to decide an a threshold above which we consider the model reasonable
+Here's an example - but you could come up with many possibilies for an accuracy measure - depending on what you are 'testing' in your model
+
+```{r accuracy , echo=TRUE}
+
+#pmax is used to apply to whole vector; 
+# note that we need to normalized everything to something between 0 and 1, with 1 being better
+# negative nse values are generally poor - anything below zero is 'random'
+stats$accuracy=pmax(0.0,stats$nse)*pmax(0.0, stats$nselog)*pmax(0.0,(1-abs(stats$mperr/100)))
+
+summary(stats$accuracy)
+hist(stats$accuracy, main="Accuracy")
+
+#Select behavioral or acceptable parameters sets
+
+threshold = 0.3
+stats.acc = subset(stats, stats$accuracy > threshold)
+
+# as an alternative  what if you want the top N parameter sets
+topN = 50
+tmp<-stats[order(stats$accuracy,decreasing=T),]
+stats.acc=tmp[1:topN,]
+```
+
+Now we have everything we need for GLUE,
+here we compute MLE estimate and 95% confidence bounds
+
+```{r GLUE , echo=TRUE}
+
+
+# create a weight for each parameter set based on its relative accuracy
+max_acc=max(stats.acc$accuracy)
+min_acc=min(stats.acc$accuracy)
+stats.acc$w_acc=(stats.acc$accuracy-min_acc)/(max_acc-min_acc)
+sum_acc=sum(stats.acc$accuracy)
+stats.acc$wt_acc=stats.acc$accuracy/sum_acc
+
+Nacc = nrow(stats.acc)
+
+# generate streamflow (or any other observation) as weighted average of all acceptable parameter sets
+
+# remember columns in modQ are rows in parms
+accept.cols = stats.acc$row
+accept.wts = stats.acc$wt_acc
+aver.flow = apply(modQ.data[,accept.cols],1, weighted.mean, accept.wts)
+
+# calculate upper and lower confidence bounds 95%
+install.packages("Hmisc")
+library(Hmisc)
+glue.res=apply(modQ.data[,accept.cols],1,"wtd.quantile",weights=accept.wts,prob=c(0.05,0.975),normwt=T)
+glue.res=as.data.frame(t(glue.res))
+colnames(glue.res)=c("low","high")
+
+# plotting streamflow for all acceptable parameter sets
+tmp = stack(modQ.data[,accept.cols])
+maxflow = max(tmp$values)
+minflow = min(tmp$values)
+plot(aver.flow,type="l",lwd=1, lty=2, xlab="Time(days)",ylab="Streamflow(mm/day)",main="GLUE", ylim=c(minflow,maxflow))
+
+x<-1:nrow(glue.res)
+polygon(c(x,rev(x)),c(glue.res$low,rev(glue.res$high)),col="pink",border=NA)
+lines(obsQ.data,col="red",lwd=2)
+legend("topright", legend=c("95% confidence limit","weighted mean", "observation"), col=c("pink","black","red"), lty=c(1,1,1), lwd=c(4,3,2))
+lines(aver.flow,lwd=2)
+
+
+
+
+```
+Now we might want to see how parameter uncertainty impacts other estimates - For example August flow
+
+```{r GLUE2 , echo=TRUE}
+modQ.mwy = aggregate(modQ.data[,1:nsims],by=list(dates.data$month, dates.data$wy), sum)
+# do some re-arranging so month and year are at the end
+modQ.mwy$wy = modQ.mwy$Group.2
+modQ.mwy$month = modQ.mwy$Group.1
+modQ.mwy = modQ.mwy[,3:(nsims+4)]
+
+#same with obs
+obsQ.mwy = aggregate(obsQ.data,by=list(dates.data$month, dates.data$wy), sum)
+# do some re-arranging so month and year are at the end
+obsQ.mwy$wy = obsQ.mwy$Group.2
+obsQ.mwy$month = obsQ.mwy$Group.1
+obsQ.mwy = obsQ.mwy[,3:4]
+
+
+# lets look at august
+modQ.aug = subset(modQ.mwy, modQ.mwy$month==8)
+# lets look at how monthly streamflow varies for each year across the range across all parameter
+boxplot(t(modQ.aug[,1:nsims]), ylab="August Flow", names=modQ.aug$wy)
+# now just our acceptable parameters
+boxplot(t(modQ.aug[,accept.cols]), ylab="August Flow", names=modQ.aug$wy)
+
+# what about uncertainty in mean August flow (overall whole simulation period)
+# calculate mean august flow
+modQ.aug.mean = apply(modQ.aug[,1:nsims], 2,mean)
+
+# we use stack to put them all together
+boxplot(modQ.aug.mean[accept.cols], ylab="August Flow")
+# to find average
+aug.wt.mean = weighted.mean(modQ.aug.mean[accept.cols],w=accept.wts)
+points(aug.wt.mean, col="red", pch="*", cex=3)
+

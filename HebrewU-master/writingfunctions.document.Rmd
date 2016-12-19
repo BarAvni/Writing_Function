@@ -1,0 +1,162 @@
+---source("penman_montieth.R")
+title: "Functions"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Documentation
+
+We can automatically create documentation with the Penman function as an example
+
+```{r functions, eval=FALSE, echo=TRUE}
+
+penman_montieth
+
+#get documentation to work
+# include devtools and roxygen2 packages
+library("devtools")
+library("roxygen2")
+
+# this will create a package called #ecohydrotools and initialize it with R code for penman_montieth
+package.skeleton(list="penman_montieth", name ="ecohydrotools")
+
+# go into ecohydrotools directory
+setwd("ecohydrotools")
+document()
+
+#this should add files to the man subdirectory
+help(penman_montieth)
+```
+
+## Adding Data
+
+you can also store files in R format in
+the data directory - 
+**.RData** and **.rda** are standard extensions
+
+and **data** is the standard directory used
+
+
+
+```{r data, echo=TRUE, eval=FALSE}
+
+setwd("/Users/naomi/UCSB.GoogleDrive/courses/Israel/Recohydro/")
+metdata = read.table("data/metdata.txt", header=T)
+metdata$date = as.Date(paste(metdata$year, metdata$month, metdata$day, sep="/"))
+
+# one can save metdata in R format to the package
+dir.create("ecohydrotools/data")
+save(metdata, file="ecohydrotools/data/metdata.RData")
+```
+## Applying
+Now make use of your code and data
+
+If re-open Rstudio, you won't have these files in your workspace
+
+The easiest way to get them in is to use **source** and then repeat documentation
+
+Best though trickier is to actually implement your package
+
+```{r apply, echo=TRUE}
+# use data in functions in ecohydrotools package
+
+setwd("/Users/naomi/UCSB.GoogleDrive/courses/Israel/Recohydro/ecohydrotools")
+source("R/penman_montieth.R")
+library(roxygen2)
+library(devtools)
+document()
+# getting data
+data("metdata")
+etres=with(metdata,penman_montieth(Tair=tavg, vpd=vpd, Rnet=rnet, gs=gs, ga=ga, dayl=24))
+
+
+
+
+#add to data set - so that we can plot variables
+metdata$et = etres
+
+plot(metdata$date, metdata$et, type="l", col="blue", 
+     ylab="ET in mm/day", xlab="Date")
+
+# imagine gs is from a larger tree double the LAI
+
+etres=with(metdata,penman_montieth(Tair=tavg, vpd=vpd, Rnet=rnet, gs=gs*4, ga=ga, dayl=24))
+lines(metdata$date, etres, col="green")
+
+# monthly values
+with(metdata, boxplot(et~month, ylab="ET (mm/day)", xlab="Month"))
+
+```
+
+## Making a package 
+
+Alternatively, we can make a package that you re-load (this is called building and reloading)
+
+Go to Tools, Project Options, Build Tools and write in in the directory of the package you created
+(check dev.tools and roxygen)
+
+Then in Build (on Rstudio options)
+Load all
+and when you make changes
+Build and Reload
+
+When you start Rstudio with your project; after having closed your session
+go to Build; load all
+This will add everything
+
+```{r loadpackage, echo=TRUE}
+
+data(metdata)
+etres=with(metdata,penman_montieth(Tair=tavg, vpd=vpd, Rnet=rnet, gs=gs, ga=ga, dayl=24))
+metdata$et = etres
+
+plot(metdata$date, metdata$et, type="l", col="blue", 
+     ylab="ET in mm/day", xlab="Date")
+
+```
+
+# adding more to your package
+
+Create your .R file with proper documentation format and then add it to the ecohydrotools/R directory
+
+Lets try with compute_yield.R, if its in that directory 
+document will automoatically find it
+```{r adaptpackage, echo=TRUE}
+
+setwd("/Users/naomi/UCSB.GoogleDrive/courses/Israel/Recohydro/ecohydrotools")
+document()
+help(compute_yield)
+
+compute_yield(T=20, P=250, irr=200, base.yield=500, Topt=25, max.water=800)
+# to see code
+compute_yield
+
+# lets see an example over multiple years
+# play with our metdata
+
+data(metdata)
+library(dplyr)
+# create a new table that summarizes by wateryear, use mean for state variables, and sum for flux variables
+# this uses functions from the dplyr package
+a = metdata %>% select(wy, tavg) %>% group_by(wy) %>% 
+    summarize_each(funs(mean))
+   
+b = metdata %>% select(wy,precip) %>% group_by(wy) %>% 
+    summarize_each(funs(sum))
+
+# link data sets together (automatically uses shared colums)   
+clim.wy = inner_join(a,b)
+head(clim.wy)
+
+# now apply
+res = compute_yield(T=clim.wy$tavg, P=clim.wy$precip, irr=200, base.yield=500, Topt=25, max.water=800)
+head(res)
+
+barplot(rbind(res$yield, res$yield.no.irrigation), beside=T, ylab="Yield (kg/yr", names=clim.wy$wy, col=c("blue","brown"), ylim=c(0,1000))
+legend("bottom", legend=c("Irrigation","No Irrigation"), col=c("blue","red"), pch=15, horiz=TRUE, bty="n", xpd=TRUE, inset=c(0,-1))
+```
+
+**Remember to add and commit these changes to you local git and when you are ready push to github**
