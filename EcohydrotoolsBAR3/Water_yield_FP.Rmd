@@ -218,7 +218,7 @@ Table 2. Summarize of the relative sensitivity of the model to the tested parame
 change
 ```
 
-### Set data for GLUE test for the water yield model (different file)
+### Set data for GLUE test for the water yield model (GLUE test was done in "GLUE.Bar.rmd")
 GLUE is a type of calibration analysis, the observed data is taken from the two reservoirs (Willow creek reservoir and North platte). The reservoirs contain baseflow together with runoff unlike the model output. Constant baseflow of (1.4 m3/s (Milhous, 2002) and 15.77 m3/s (Peterson et al., 2015) for Willow ck and North platte respectively) was reduced from each station. Average discharge was converted to runoff depth according to basins area. Average value of this two stations was taken for calibration.
 ```{r ,echo=TRUE}
 # Set the LAI, InfilCap and MaxStorage values:
