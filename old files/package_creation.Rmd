@@ -21,6 +21,8 @@ source("R/canopyInterception.R")
 source("R/ExRadiation.R")
 source("R/Evapo_HS.R")
 source("R/runoffCalc.R")
+source("R/Water_yield_cold_env.R")
+canopyInterception
 library(roxygen2)
 library(devtools)
 document()

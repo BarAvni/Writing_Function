@@ -10,7 +10,6 @@ knitr::opts_chunk$set(echo = TRUE)
 ## Documentation
 
 ```{r functions, eval=FALSE, echo=TRUE}
-#setwd("/Users/baravni/Documents/Documents_master/master/R modelling/task1/Writing_Function/function_for_package")
 setwd("/Users/baravni/Documents/Documents_master/master/R modelling/task1/Writing_Function/function_for_package")
 source("penman_montieth.R")
 source("Thornthwaite.R")
@@ -27,14 +26,11 @@ library("devtools")
 library("roxygen2")
 
 # this will create a package called #ecohydrotools_Bar and initialize it with R code for the 4 functions
-#setwd("/Users/baravni/Documents/Documents_master/master/R modelling/task1/Writing_Function/")
-setwd("/Users/baravni/Documents/Documents_master/master/R modelling/Final_Project/")
-package.skeleton(list  = c("ExRadiation", "Evapo_HS", "canopyInterception", "runoffCalc","Water_yield_cold_env"), name ="EcohydrotoolsBAR3")
-#package.skeleton(list  = c("penman_montieth", "Thornthwaite", "canopyInterception", "runoffCalc"), name ="EcohydrotoolsBAR3")
+setwd("/Users/baravni/Documents/Documents_master/master/R modelling/task1/Writing_Function/")
+package.skeleton(list  = c("penman_montieth", "Thornthwaite", "canopyInterception", "runoffCalc"), name ="EcohydrotoolsBAR3")
 
 # go into ecohydrotoolsBAR3 directory
-#setwd("/Users/baravni/Documents/Documents_master/master/R modelling/task1/Writing_Function/EcohydrotoolsBAR3")
-setwd("/Users/baravni/Documents/Documents_master/master/R modelling/Final_Project/EcohydrotoolsBAR3")
+setwd("/Users/baravni/Documents/Documents_master/master/R modelling/task1/Writing_Function/EcohydrotoolsBAR3")
 #source("R/Thornthwaite.R")
 document()
 
